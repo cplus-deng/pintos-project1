@@ -66,11 +66,37 @@ sema_down (struct semaphore *sema)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
+  struct thread *ct = thread_current ();
   while (sema->value == 0) 
     {
-      list_push_back (&sema->waiters, &thread_current ()->elem);
+      list_push_back (&sema->waiters, &ct ->elem);
       thread_block ();
     }
+      /*if(ct->priority>sema->highest_priroity)
+      {
+        sema->highest_priroity=ct->priority;
+      }
+    }
+  list_push_back (&sema->runnings, &ct ->elem);
+  if (ct->priority<sema->highest_priroity)
+  {
+    ct->priority=sema->highest_priroity;
+  }*/
+  /*struct list_elem *e;
+  int max_priority=0;
+  for (e = list_begin (&sema->waiters); e != list_end (&sema->waiters);
+       e = list_next (e))
+    {
+      struct thread *t = list_entry (e, struct thread, allelem);
+      if(t->priority>max_priority)
+      {
+        max_priority=t->priority;
+      }
+    }
+  if(max_priority>ct->priority)
+  {
+    ct->priority=max_priority;
+  }*/
   sema->value--;
   intr_set_level (old_level);
 }
@@ -89,15 +115,19 @@ sema_try_down (struct semaphore *sema)
   ASSERT (sema != NULL);
 
   old_level = intr_disable ();
+  struct thread *ct = thread_current ();
   if (sema->value > 0) 
     {
       sema->value--;
+      /*if (ct->priority<sema->highest_priroity)
+      {
+        ct->priority=sema->highest_priroity;
+      }*/
       success = true; 
     }
   else
     success = false;
   intr_set_level (old_level);
-
   return success;
 }
 
@@ -113,10 +143,13 @@ sema_up (struct semaphore *sema)
   ASSERT (sema != NULL);
 
   old_level = intr_disable ();
+  /*struct thread *ct = thread_current ();
+  ct->priority=ct->old_priority;*/
   if (!list_empty (&sema->waiters)) 
     thread_unblock (list_entry (list_pop_front (&sema->waiters),
                                 struct thread, elem));
   sema->value++;
+  
   intr_set_level (old_level);
 }
 
