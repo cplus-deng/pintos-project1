@@ -211,7 +211,7 @@ lock_acquire (struct lock *lock)
     //thread_update_priority (l->holder);
     l = l->holder->lock_waiting;
   }
- /* ct->lock_waiting=lock;
+ /* ct->lock_waiting=lock;hahaha
   l=lock;
   while(l && ct->priority > l->max_priority)
   {
