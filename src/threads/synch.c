@@ -72,33 +72,7 @@ sema_down (struct semaphore *sema)
       thread_block ();
 
     }
-      /*if(ct->priority>sema->highest_priority)
-      {
-        sema->highest_priority=ct->priority;
-      }
-    }
-  list_push_back (&sema->runnings, &ct ->elem);
-  if (ct->priority<sema->highest_priority)
-  {
-    ct->priority=sema->highest_priority;
-  }*/
-  /*struct list_elem *e;
-  int max_priority=0;
-  for (e = list_begin (&sema->waiters); e != list_end (&sema->waiters);
-       e = list_next (e))
-    {
-      struct thread *t = list_entry (e, struct thread, allelem);
-      if(t->priority>max_priority)
-      {
-        max_priority=t->priority;
-      }
-    }
-  if(max_priority>ct->priority)
-  {
-    ct->priority=max_priority;
-  }*/
   sema->value--;
-  //list_push_back (&sema->waiters, &ct ->elem);
   intr_set_level (old_level);
 }
 
@@ -119,10 +93,6 @@ sema_try_down (struct semaphore *sema)
   if (sema->value > 0) 
     {
       sema->value--;
-      /*if (ct->priority<sema->highest_priority)
-      {
-        ct->priority=sema->highest_priority;
-      }*/
       success = true; 
     }
   else
@@ -144,8 +114,6 @@ sema_up (struct semaphore *sema)
 
   old_level = intr_disable ();
   if (!list_empty (&sema->waiters)) 
-    //thread_unblock (list_entry (list_max (&sema->waiters,thread_cmp_priority,NULL),
-                                //struct thread, elem));
     thread_unblock (list_entry (list_pop_front (&sema->waiters),
                                 struct thread, elem));
   sema->value++;
@@ -211,6 +179,7 @@ lock_init (struct lock *lock)
   ASSERT (lock != NULL);
 
   lock->holder = NULL;
+  lock->max_priority=0;
   sema_init (&lock->semaphore, 1);
 }
 
@@ -225,12 +194,41 @@ lock_init (struct lock *lock)
 void
 lock_acquire (struct lock *lock)
 {
+  struct thread *ct = thread_current();
+  struct lock *l;
+  enum intr_level old_level;
+
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
+  ct->lock_waiting=lock;
+  l=lock;
+  while(l &&l->holder &&ct->priority > l->max_priority)
+  {
+    l->max_priority = ct->priority;
+    l->holder->priority=ct->priority;
+    //thread_update_priority (l->holder);
+    l = l->holder->lock_waiting;
+  }
+ /* ct->lock_waiting=lock;
+  l=lock;
+  while(l && ct->priority > l->max_priority)
+  {
+    l->max_priority = ct->priority;
+    thread_update_priority (l->holder);
+    l = l->holder->lock_waiting;
+  }*/
   sema_down (&lock->semaphore);
-  lock->holder = thread_current ();
+
+  old_level = intr_disable ();
+
+  ct->lock_waiting = NULL;
+  lock->max_priority = ct->priority;
+  //thread_hold_the_lock (lock);
+  lock->holder = ct;
+
+  intr_set_level (old_level);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -263,12 +261,22 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
-
   lock->holder = NULL;
+  struct thread *ct= thread_current();
+  ct->priority=ct->base_priority;
+  /*ct->lock_waiting=lock;
+  l=lock;
+  while(l &&l->holder &&ct->priority > l->max_priority)
+  {
+    l->max_priority = ct->priority;
+    l->holder->priority=ct->priority;
+    //thread_update_priority (l->holder);
+    l = l->holder->lock_waiting;
+  }*/
   sema_up (&lock->semaphore);
 }
 
-/* Returns true if the current thread holds LOCK, false
+/* Returns true if the crrent thread holds LOCK, false
    otherwise.  (Note that testing whether some other thread holds
    a lock would be racy.) */
 bool
@@ -380,4 +388,11 @@ cond_sema_cmp_priority (const struct list_elem *a, const struct list_elem *b, vo
   struct semaphore_elem *sa = list_entry (a, struct semaphore_elem, elem);
   struct semaphore_elem *sb = list_entry (b, struct semaphore_elem, elem);
   return list_entry(list_front(&sa->semaphore.waiters), struct thread, elem)->priority < list_entry(list_front(&sb->semaphore.waiters), struct thread, elem)->priority;
+}
+
+/* lock comparation function */
+bool
+lock_cmp_priority (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
+  return list_entry (a, struct lock, elem)->max_priority > list_entry (b, struct lock, elem)->max_priority;
 }
