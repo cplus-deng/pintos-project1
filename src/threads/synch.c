@@ -221,14 +221,23 @@ lock_acquire (struct lock *lock)
   }*/
   sema_down (&lock->semaphore);
 
-  old_level = intr_disable ();
-
-  ct->lock_waiting = NULL;
-  lock->max_priority = ct->priority;
-  //thread_hold_the_lock (lock);
+  //old_level = intr_disable ();
   lock->holder = ct;
+  ct->lock_waiting = NULL;
+  //struct list_elem *max_priority = list_min(&lock->semaphore.waiters,thread_cmp_priority,NULL);
+  //lock->max_priority = list_entry (max_priority,struct thread, elem)->priority;
+  lock->max_priority = ct->priority;
+  // if(lock->max_priority>thread_current ()->priority){
+  //   thread_current ()->priority=lock->max_priority;
+  //   thread_yield();
+  // }
+    
+  list_push_back (&ct->locks, &lock->elem);
+  //lock->max_priority = ct->priority;
+  //thread_hold_the_lock (lock);
+  
 
-  intr_set_level (old_level);
+  //intr_set_level (old_level);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -261,9 +270,25 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
+  enum intr_level old_level = intr_disable ();
+  struct thread *t= thread_current();
+
   lock->holder = NULL;
-  struct thread *ct= thread_current();
-  ct->priority=ct->base_priority;
+  list_remove (&lock->elem);
+  int max_priority = t->base_priority;
+  int lock_priority;
+  if (!list_empty (&t->locks))
+  {
+    list_sort (&t->locks, lock_cmp_priority, NULL);
+    lock_priority = list_entry (list_front (&t->locks), struct lock, elem)->max_priority;
+    if (lock_priority > max_priority)
+      max_priority = lock_priority;
+  }
+  t->priority = max_priority;
+  intr_set_level (old_level);
+  //ct->priority=ct->base_priority;
+  //struct list_elem *max_priority = list_min(&ct->locks,lock_cmp_priority,NULL);
+  //lock->max_priority = list_entry (max_priority,struct lock, elem)->max_priority;
   /*ct->lock_waiting=lock;
   l=lock;
   while(l &&l->holder &&ct->priority > l->max_priority)
