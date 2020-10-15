@@ -89,8 +89,6 @@ timer_elapsed (int64_t then)
 void
 timer_sleep (int64_t ticks) 
 {
-  int64_t start = timer_ticks ();
-   
   if (ticks<=0)
   {
     return;
@@ -181,6 +179,17 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ticks++;
   thread_tick ();
   thread_foreach (blocked_thread_check, NULL);
+
+  /*if()
+  {
+    thread_current()->recent_cpu+=1;
+    if(timer_ticks() % TIMER_FREQ == 0)
+    {
+      //load_avg = (59/60.0)*load_avg + (1/60.0)*list_size(&ready_list);
+      recalculate_load_avg();
+      thread_foreach (thread_recalculate_recent_cpu, NULL);
+    }
+  }*/
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

@@ -20,6 +20,7 @@
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
 
+#define NICE_DEFAULT 0;
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
@@ -37,6 +38,7 @@ static struct thread *initial_thread;
 /* Lock used by allocate_tid(). */
 static struct lock tid_lock;
 
+int load_avg;
 /* Stack frame for kernel_thread(). */
 struct kernel_thread_frame 
   {
@@ -92,6 +94,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  load_avg=0;
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
@@ -335,7 +338,10 @@ void
 thread_set_priority (int new_priority) 
 {
   struct thread *current_thread = thread_current ();
-  current_thread->priority = new_priority;
+  if(current_thread->priority == current_thread->base_priority)
+  {
+    current_thread->priority = new_priority;
+  }
   current_thread->base_priority = new_priority;
   thread_yield();
 }
@@ -351,14 +357,17 @@ thread_get_priority (void)
 void
 thread_set_nice (int nice UNUSED) 
 {
-  /* Not yet implemented. */
+  struct thread *current_thread = thread_current ();
+  current_thread->nice = nice;
+  thread_calculate_priority(current_thread);
+  thread_yield();
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
+  return thread_current ()->nice;
   return 0;
 }
 
@@ -366,16 +375,14 @@ thread_get_nice (void)
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return (int)(100 * load_avg);
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return (int)(thread_current ()->recent_cpu * 100);
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -468,6 +475,20 @@ init_thread (struct thread *t, const char *name, int priority)
   t->ticks_blocked = 0;
   t->base_priority = priority;
   list_init(&t->locks);
+  /*if(thread_mlfqs)
+  {
+    if(t == initial_thread)
+    {
+      t->recent_cpu=0;
+      t->nice=NICE_DEFAULT;
+    }
+    else
+    {
+      t->recent_cpu = thread_get_recent_cpu ();
+      t->nice=thread_get_nice();
+    }
+  }*/
+  
 
   old_level = intr_disable ();
   list_insert_ordered (&all_list, &t->allelem,(list_less_func *)thread_cmp_priority,NULL);
@@ -609,39 +630,27 @@ thread_cmp_priority(const struct list_elem *a,const struct list_elem *b,void *au
   return list_entry(a,struct thread,elem)->priority > list_entry(b,struct thread,elem)->priority;
 }
 
-/* Let thread hold a lock */
-void
-thread_hold_the_lock(struct lock *lock)
+int
+thread_calculate_priority(struct thread *t)
 {
-  enum intr_level old_level = intr_disable ();
-  list_insert_ordered (&thread_current ()->locks, &lock->elem, lock_cmp_priority, NULL);
-
-  if (lock->max_priority > thread_current ()->priority)
-  {
-    thread_current ()->priority = lock->max_priority;
-    thread_yield ();
-  }
-
-  intr_set_level (old_level);
+  int nice = t->nice;
+  int recent_cpu = t->recent_cpu;
+  int priority;
+  priority = PRI_MAX - (recent_cpu / 4) - (nice * 2);
+  t->priority=priority;
+  return priority;
+}
+int64_t
+thread_recalculate_recent_cpu(struct thread *t)
+{
+  int recent_cpu;
+  recent_cpu=((2*load_avg)* t->recent_cpu)/(2*load_avg + 1)  + t->nice;
+  return recent_cpu;
 }
 
-/* Update priority. */
-void
-thread_update_priority (struct thread *t)
+int
+recalculate_load_avg()
 {
-  enum intr_level old_level = intr_disable ();
-  int max_priority = t->base_priority;
-  int lock_priority;
-
-  if (!list_empty (&t->locks))
-  {
-    list_sort (&t->locks, lock_cmp_priority, NULL);
-    lock_priority = list_entry (list_front (&t->locks), struct lock, elem)->max_priority;
-    printf("gugugu:%d\n",lock_priority);
-    if (lock_priority > max_priority)
-      max_priority = lock_priority;
-  }
-
-  t->priority = max_priority;
-  intr_set_level (old_level);
+  load_avg = ((59*load_avg)/60) + (1/60)*list_size(&ready_list);
+  return load_avg;
 }

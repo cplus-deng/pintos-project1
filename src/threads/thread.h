@@ -96,6 +96,8 @@ struct thread
     struct list_elem block_elem; 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
+    int64_t recent_cpu;                 /* recent cpu time. */
+    int nice;                           /* nice. */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -146,4 +148,7 @@ void blocked_thread_check (struct thread *, void * UNUSED);
 bool thread_cmp_priority(const struct list_elem *a,const struct list_elem *b,void *aux UNUSED);
 void thread_hold_the_lock(struct lock *lock);
 void thread_update_priority (struct thread *t);
+int64_t thread_recalculate_recent_cpu(struct thread *t);
+int thread_calculate_priority(struct thread *t);
+int recalculate_load_avg();
 #endif /* threads/thread.h */

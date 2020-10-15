@@ -68,7 +68,7 @@ sema_down (struct semaphore *sema)
   old_level = intr_disable ();
   while (sema->value == 0) 
     {
-      list_insert_ordered (&sema->waiters, &ct ->elem,thread_cmp_priority,NULL);
+      list_push_back (&sema->waiters, &ct ->elem);
       thread_block ();
 
     }
@@ -113,9 +113,13 @@ sema_up (struct semaphore *sema)
   ASSERT (sema != NULL);
 
   old_level = intr_disable ();
-  if (!list_empty (&sema->waiters)) 
-    thread_unblock (list_entry (list_pop_front (&sema->waiters),
-                                struct thread, elem));
+  if (!list_empty (&sema->waiters))
+  {
+    struct list_elem *  max_priority = list_min(&sema->waiters,thread_cmp_priority,NULL);
+    list_remove(max_priority);
+    thread_unblock (list_entry (max_priority,struct thread,elem));
+  }
+    
   sema->value++;
   thread_yield();
   intr_set_level (old_level);
@@ -196,48 +200,33 @@ lock_acquire (struct lock *lock)
 {
   struct thread *ct = thread_current();
   struct lock *l;
-  enum intr_level old_level;
 
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
-
-  ct->lock_waiting=lock;
-  l=lock;
-  while(l &&l->holder &&ct->priority > l->max_priority)
+  if(!thread_mlfqs)
   {
-    l->max_priority = ct->priority;
-    l->holder->priority=ct->priority;
-    //thread_update_priority (l->holder);
-    l = l->holder->lock_waiting;
+    ct->lock_waiting=lock;
+    l=lock;
+    while(l &&l->holder &&ct->priority > l->max_priority)
+    {
+      l->max_priority = ct->priority;
+      l->holder->priority=ct->priority;
+      l = l->holder->lock_waiting;
+    }
   }
- /* ct->lock_waiting=lock;hahaha
-  l=lock;
-  while(l && ct->priority > l->max_priority)
-  {
-    l->max_priority = ct->priority;
-    thread_update_priority (l->holder);
-    l = l->holder->lock_waiting;
-  }*/
-  sema_down (&lock->semaphore);
-
-  //old_level = intr_disable ();
-  lock->holder = ct;
-  ct->lock_waiting = NULL;
-  //struct list_elem *max_priority = list_min(&lock->semaphore.waiters,thread_cmp_priority,NULL);
-  //lock->max_priority = list_entry (max_priority,struct thread, elem)->priority;
-  lock->max_priority = ct->priority;
-  // if(lock->max_priority>thread_current ()->priority){
-  //   thread_current ()->priority=lock->max_priority;
-  //   thread_yield();
-  // }
-    
-  list_push_back (&ct->locks, &lock->elem);
-  //lock->max_priority = ct->priority;
-  //thread_hold_the_lock (lock);
   
-
-  //intr_set_level (old_level);
+  sema_down (&lock->semaphore);
+  lock->holder = ct;
+  if(!thread_mlfqs)
+  {
+    enum intr_level old_level = intr_disable ();
+    ct->lock_waiting = NULL;
+    lock->max_priority = ct->priority;
+    list_push_back (&ct->locks, &lock->elem);
+    intr_set_level (old_level);
+  }
+  
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -274,30 +263,21 @@ lock_release (struct lock *lock)
   struct thread *t= thread_current();
 
   lock->holder = NULL;
-  list_remove (&lock->elem);
-  int max_priority = t->base_priority;
-  int lock_priority;
-  if (!list_empty (&t->locks))
+  if(!thread_mlfqs)
   {
-    list_sort (&t->locks, lock_cmp_priority, NULL);
-    lock_priority = list_entry (list_front (&t->locks), struct lock, elem)->max_priority;
-    if (lock_priority > max_priority)
-      max_priority = lock_priority;
+    list_remove (&lock->elem);
+    int max_priority = t->base_priority;
+    int lock_priority;
+    if (!list_empty (&t->locks))
+    {
+      list_sort (&t->locks, lock_cmp_priority, NULL);
+      lock_priority = list_entry (list_front (&t->locks), struct lock, elem)->max_priority;
+      if (lock_priority > max_priority)
+        max_priority = lock_priority;
+    }
+    t->priority = max_priority;
+    intr_set_level (old_level);
   }
-  t->priority = max_priority;
-  intr_set_level (old_level);
-  //ct->priority=ct->base_priority;
-  //struct list_elem *max_priority = list_min(&ct->locks,lock_cmp_priority,NULL);
-  //lock->max_priority = list_entry (max_priority,struct lock, elem)->max_priority;
-  /*ct->lock_waiting=lock;
-  l=lock;
-  while(l &&l->holder &&ct->priority > l->max_priority)
-  {
-    l->max_priority = ct->priority;
-    l->holder->priority=ct->priority;
-    //thread_update_priority (l->holder);
-    l = l->holder->lock_waiting;
-  }*/
   sema_up (&lock->semaphore);
 }
 
@@ -359,7 +339,6 @@ cond_wait (struct condition *cond, struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
-  //list_insert_ordered (&cond->waiters, &waiter.elem,cond_sema_cmp_priority,NULL);
   list_push_front(&cond->waiters, &waiter.elem);
   sema_init (&waiter.semaphore, 0);
   lock_release (lock);
