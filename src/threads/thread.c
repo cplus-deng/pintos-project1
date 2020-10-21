@@ -337,13 +337,20 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  struct thread *current_thread = thread_current ();
-  if(current_thread->priority == current_thread->base_priority)
+  if(!thread_mlfqs)
   {
-    current_thread->priority = new_priority;
+    struct thread *current_thread = thread_current ();
+    if(current_thread->priority == current_thread->base_priority)
+    {
+      current_thread->priority = new_priority;
+    }
+    current_thread->base_priority = new_priority;
+    thread_yield();
   }
-  current_thread->base_priority = new_priority;
-  thread_yield();
+  if(thread_mlfqs)
+  {
+    return;
+  }
 }
 
 /* Returns the current thread's priority. */
@@ -470,7 +477,10 @@ init_thread (struct thread *t, const char *name, int priority)
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
-  t->priority = priority;
+  if(!thread_mlfqs)
+  {
+    t->priority = priority;
+  }
   t->magic = THREAD_MAGIC;
   t->ticks_blocked = 0;
   t->base_priority = priority;

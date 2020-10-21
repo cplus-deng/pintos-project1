@@ -70,7 +70,6 @@ sema_down (struct semaphore *sema)
     {
       list_push_back (&sema->waiters, &ct ->elem);
       thread_block ();
-
     }
   sema->value--;
   intr_set_level (old_level);
@@ -198,14 +197,15 @@ lock_init (struct lock *lock)
 void
 lock_acquire (struct lock *lock)
 {
-  struct thread *ct = thread_current();
-  struct lock *l;
+  
 
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
   if(!thread_mlfqs)
   {
+    struct thread *ct = thread_current();
+    struct lock *l;
     ct->lock_waiting=lock;
     l=lock;
     while(l &&l->holder &&ct->priority > l->max_priority)
@@ -214,19 +214,22 @@ lock_acquire (struct lock *lock)
       l->holder->priority=ct->priority;
       l = l->holder->lock_waiting;
     }
-  }
-  
-  sema_down (&lock->semaphore);
-  lock->holder = ct;
-  if(!thread_mlfqs)
-  {
+    sema_down (&lock->semaphore);
+    lock->holder = ct;
+
     enum intr_level old_level = intr_disable ();
     ct->lock_waiting = NULL;
     lock->max_priority = ct->priority;
     list_push_back (&ct->locks, &lock->elem);
     intr_set_level (old_level);
   }
-  
+  if(thread_mlfqs)
+  {
+    enum intr_level old_level = intr_disable ();
+    sema_down (&lock->semaphore);
+    lock->holder = thread_current();
+    intr_set_level (old_level);
+  }
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -259,12 +262,13 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
-  enum intr_level old_level = intr_disable ();
-  struct thread *t= thread_current();
-
-  lock->holder = NULL;
+  
+  
   if(!thread_mlfqs)
   {
+    enum intr_level old_level = intr_disable ();
+    struct thread *t= thread_current();
+    lock->holder = NULL;
     list_remove (&lock->elem);
     int max_priority = t->base_priority;
     int lock_priority;
@@ -277,8 +281,16 @@ lock_release (struct lock *lock)
     }
     t->priority = max_priority;
     intr_set_level (old_level);
+    sema_up (&lock->semaphore);
   }
-  sema_up (&lock->semaphore);
+  if(thread_mlfqs)
+  {
+    enum intr_level old_level = intr_disable ();
+    lock->holder = NULL;
+    sema_up (&lock->semaphore);
+    intr_set_level (old_level);
+  }
+  
 }
 
 /* Returns true if the crrent thread holds LOCK, false
