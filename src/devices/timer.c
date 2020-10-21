@@ -186,7 +186,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
     //printf("%d ",thread_current()->recent_cpu);
     if(timer_ticks() % TIMER_FREQ == 0)
     {
-      //load_avg = (59/60.0)*load_avg + (1/60.0)*list_size(&ready_list);
+      
       recalculate_load_avg();
       thread_foreach (thread_recalculate_recent_cpu, NULL);
     }

@@ -383,6 +383,7 @@ thread_get_nice (void)
 int
 thread_get_load_avg (void) 
 {
+
   return 100*(load_avg)/f;
 }
 
@@ -664,7 +665,7 @@ int64_t
 thread_recalculate_recent_cpu(struct thread *t)
 {
   int recent_cpu;
-  recent_cpu=(((2*(int64_t)load_avg)* t->recent_cpu)/f/(2*load_avg/f + 1))  + t->nice*f;
+  recent_cpu=(((2*(int64_t)load_avg)* t->recent_cpu)/(2*load_avg + f))  + t->nice*f;
   t->recent_cpu=recent_cpu;
   return recent_cpu;
 }
@@ -672,7 +673,17 @@ thread_recalculate_recent_cpu(struct thread *t)
 int
 recalculate_load_avg()
 {
-  load_avg = ((59*load_avg)/60) + (list_size(&ready_list)*f)/60;
+  int ct;
+  if(thread_current() == idle_thread)
+  {
+    ct=0;
+  }
+  else
+  {
+    ct=1;
+  }
+  
+  load_avg = ((59*load_avg)/60) + ((list_size(&ready_list)+ct)*f)/60;
   return load_avg;
 }
 
