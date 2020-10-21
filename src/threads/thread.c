@@ -21,6 +21,8 @@
 #define THREAD_MAGIC 0xcd6abf4b
 
 #define NICE_DEFAULT 0;
+
+#define f 16384
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
@@ -375,21 +377,20 @@ int
 thread_get_nice (void) 
 {
   return thread_current ()->nice;
-  return 0;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) 
 {
-  return (int)(100 * load_avg);
+  return 100*(load_avg)/f;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  return (int)(thread_current ()->recent_cpu * 100);
+  return (thread_current ()->recent_cpu * 100)/f;
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -485,7 +486,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->ticks_blocked = 0;
   t->base_priority = priority;
   list_init(&t->locks);
-  /*if(thread_mlfqs)
+  if(thread_mlfqs)
   {
     if(t == initial_thread)
     {
@@ -497,7 +498,8 @@ init_thread (struct thread *t, const char *name, int priority)
       t->recent_cpu = thread_get_recent_cpu ();
       t->nice=thread_get_nice();
     }
-  }*/
+    thread_calculate_priority(t);
+  }
   
 
   old_level = intr_disable ();
@@ -640,27 +642,44 @@ thread_cmp_priority(const struct list_elem *a,const struct list_elem *b,void *au
   return list_entry(a,struct thread,elem)->priority > list_entry(b,struct thread,elem)->priority;
 }
 
-int
+void
 thread_calculate_priority(struct thread *t)
 {
   int nice = t->nice;
   int recent_cpu = t->recent_cpu;
   int priority;
-  priority = PRI_MAX - (recent_cpu / 4) - (nice * 2);
+  priority = PRI_MAX - (recent_cpu/ 4)/ f  - (nice * 2);
   t->priority=priority;
-  return priority;
+  if(priority>PRI_MAX)
+  {
+    priority=PRI_MAX;
+  }
+  else if(priority<PRI_MIN)
+  {
+    priority=PRI_MIN;
+  }
+  t->priority=priority;
 }
 int64_t
 thread_recalculate_recent_cpu(struct thread *t)
 {
   int recent_cpu;
-  recent_cpu=((2*load_avg)* t->recent_cpu)/(2*load_avg + 1)  + t->nice;
+  recent_cpu=(((2*(int64_t)load_avg)* t->recent_cpu)/f/(2*load_avg/f + 1))  + t->nice*f;
+  t->recent_cpu=recent_cpu;
   return recent_cpu;
 }
 
 int
 recalculate_load_avg()
 {
-  load_avg = ((59*load_avg)/60) + (1/60)*list_size(&ready_list);
+  load_avg = ((59*load_avg)/60) + (list_size(&ready_list)*f)/60;
   return load_avg;
+}
+
+void current_cpu_add_one()
+{
+  struct thread * current_thread=thread_current();
+  if(current_thread ==idle_thread)
+    return;
+  current_thread->recent_cpu+=f;
 }

@@ -180,16 +180,21 @@ timer_interrupt (struct intr_frame *args UNUSED)
   thread_tick ();
   thread_foreach (blocked_thread_check, NULL);
 
-  /*if()
+  if(thread_mlfqs)
   {
-    thread_current()->recent_cpu+=1;
+    current_cpu_add_one();
+    //printf("%d ",thread_current()->recent_cpu);
     if(timer_ticks() % TIMER_FREQ == 0)
     {
       //load_avg = (59/60.0)*load_avg + (1/60.0)*list_size(&ready_list);
       recalculate_load_avg();
       thread_foreach (thread_recalculate_recent_cpu, NULL);
     }
-  }*/
+    if(timer_ticks() % 4 == 0)
+    {
+      thread_foreach (thread_calculate_priority, NULL);
+    }
+  }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

@@ -149,6 +149,7 @@ bool thread_cmp_priority(const struct list_elem *a,const struct list_elem *b,voi
 void thread_hold_the_lock(struct lock *lock);
 void thread_update_priority (struct thread *t);
 int64_t thread_recalculate_recent_cpu(struct thread *t);
-int thread_calculate_priority(struct thread *t);
+void thread_calculate_priority(struct thread *t);
 int recalculate_load_avg();
+void current_cpu_add_one();
 #endif /* threads/thread.h */
